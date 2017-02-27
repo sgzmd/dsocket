@@ -30,19 +30,22 @@ int main() {
     printf("Running test programme... \n");
 
     OpenSSL_add_ssl_algorithms();
-    SSL_METHOD *meth = TLSv1_client_method();
+    SSL_METHOD *method = SSLv23_client_method();
+    ERR_load_crypto_strings();
+    ERR_load_BIO_strings();
     SSL_load_error_strings();
-    SSL_CTX* ctx = SSL_CTX_new (meth);
-    CHK_NULL(ctx);
 
     struct sockaddr_in addr;
     get_host_by_name(HOST, T_A, &addr);
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(80);
+    addr.sin_port = htons(443);
 
     size_t size = sizeof(addr);
 
     int err;
+
+    err = SSL_library_init();
+    CHK_SSL(err);
 
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
@@ -51,9 +54,15 @@ int main() {
         if (connect(sockfd, &addr, size) < 0) {
             log_line("Failed to connect at %d\n", __LINE__);
         } else {
+            SSL_CTX* ctx = SSL_CTX_new (method);
+            CHK_NULL(ctx);
+
+            SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2);
 
             SSL* ssl = SSL_new(ctx);
             SSL_set_fd(ssl, sockfd);
+
+            log_line("Preparing to connect at line %d...\n", __LINE__);
 
             err = SSL_connect(ssl);
 
@@ -66,21 +75,14 @@ int main() {
             // should probably do some checks here
             X509_free(server_cert);
 
-            if (sendto(sockfd,
-                       request_buffer,
-                       strlen(request_buffer),
-                       0,
-                       &addr,
-                       size) < 0) {
-                log_line("Failed to send data at %d\n", __LINE__);
-            } else {
-                log_line("Sent %s\n", request_buffer);
-                
-                char* buffer = malloc(sizeof(char) * BUFFER_LENGTH);
-                recvfrom(sockfd, buffer, BUFFER_LENGTH, 0, &addr, &size);
+            err = SSL_write(ssl, request_buffer, strlen(request_buffer));
+            CHK_SSL(err);
 
-                log_line("Recvd: %s\n", buffer);
-            }
+            char* buffer = malloc(sizeof(char) * BUFFER_LENGTH);
+            err = SSL_read(ssl, buffer, BUFFER_LENGTH);
+            CHK_SSL(err);
+
+            log_line("Recvd: %s\n", buffer);
         }
     }
 
