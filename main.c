@@ -5,9 +5,9 @@
 
 #include <openssl/crypto.h>
 #include <openssl/x509.h>
-#include <openssl/pem.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <zconf.h>
 
 #define log_line(f_, ...) printf((f_), __VA_ARGS__)
 
@@ -30,13 +30,13 @@ int main() {
     printf("Running test programme... \n");
 
     OpenSSL_add_ssl_algorithms();
-    SSL_METHOD *method = SSLv23_client_method();
+    const SSL_METHOD *method = SSLv23_client_method();
     ERR_load_crypto_strings();
     ERR_load_BIO_strings();
     SSL_load_error_strings();
 
     struct sockaddr_in addr;
-    get_host_by_name(HOST, T_A, &addr);
+    get_host_by_name((u_char *)HOST, T_A, &addr);
     addr.sin_family = AF_INET;
     addr.sin_port = htons(443);
 
@@ -83,7 +83,12 @@ int main() {
             CHK_SSL(err);
 
             log_line("Recvd: %s\n", buffer);
+            free(buffer);
+            SSL_free(ssl);
+            SSL_CTX_free(ctx);
         }
+
+        close(sockfd);
     }
 
     return 0;
